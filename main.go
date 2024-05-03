@@ -11,7 +11,7 @@ import (
 	// "sync"
 	"time"
 
-	"github.com/knightsc/gapstone"
+	"github.com/lockness-ko/gapa/gapstone"
 	"github.com/lockness-ko/gapa/index"
 	"github.com/lockness-ko/gapa/utils"
 	elfparser "github.com/saferwall/elf"

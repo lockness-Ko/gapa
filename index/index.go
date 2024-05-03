@@ -3,7 +3,7 @@ package index
 import (
 	"slices"
 
-	"github.com/knightsc/gapstone"
+	"github.com/lockness-ko/gapa/gapstone"
 	"github.com/lockness-ko/gapa/utils"
 )
 
