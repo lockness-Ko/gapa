@@ -6,9 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
-	// "sync"
 	"time"
 
 	"github.com/lockness-ko/gapa/gapstone"
@@ -32,6 +32,8 @@ type FileInfo struct {
 	Os           string
 	Imports      []string
 	Exports      []string
+	Sections     []string
+	Arch         string
 	Instructions index.InstructionIndex
 }
 
@@ -40,6 +42,24 @@ type Rule struct {
 		Meta     MetaField
 		Features []map[string]interface{}
 	}
+}
+
+func handleExport(name string, fileInfo FileInfo) bool {
+	for _, exp := range fileInfo.Exports {
+		if name == exp {
+			return true
+		}
+	}
+	return false
+}
+
+func handleSection(target_sec string, fileInfo FileInfo) bool {
+	for _, sec := range fileInfo.Sections {
+		if target_sec == sec {
+			return true
+		}
+	}
+	return false
 }
 
 func handleApi(name string, fileInfo FileInfo) bool {
@@ -53,6 +73,20 @@ func handleApi(name string, fileInfo FileInfo) bool {
 
 func handleOs(os string, fileInfo FileInfo) bool {
 	if os == fileInfo.Os {
+		return true
+	}
+	return false
+}
+
+func handleArch(arch string, fileInfo FileInfo) bool {
+	if arch == fileInfo.Arch {
+		return true
+	}
+	return false
+}
+
+func handleMnemonic(mne string, fileInfo FileInfo) bool {
+	if slices.Contains(fileInfo.Instructions.MnemonicKeys, mne) {
 		return true
 	}
 	return false
@@ -81,6 +115,18 @@ func handleAnd(fields []interface{}, fileInfo FileInfo) bool {
 			break
 		case "os":
 			bools = append(bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "arch":
+			bools = append(bools, handleArch(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "mnemonic":
+			bools = append(bools, handleMnemonic(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "export":
+			bools = append(bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "section":
+			bools = append(bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "optional":
 			bools = append(bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
@@ -122,6 +168,18 @@ func handleOr(fields []interface{}, fileInfo FileInfo) bool {
 			break
 		case "os":
 			bools = append(bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "arch":
+			bools = append(bools, handleArch(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "mnemonic":
+			bools = append(bools, handleMnemonic(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "export":
+			bools = append(bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "section":
+			bools = append(bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "optional":
 			bools = append(bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
@@ -253,19 +311,29 @@ func main() {
 		var capstone_arch int
 		switch elf_parsed.Class() {
 		case elfparser.ELFCLASS32:
+			fileInfo.Arch = "i386"
 			capstone_arch = gapstone.CS_MODE_32
 			break
 		case elfparser.ELFCLASS64:
+			fileInfo.Arch = "amd64"
 			capstone_arch = gapstone.CS_MODE_64
 			break
 		}
 
 		for _, symbol := range elf_parsed.ELFSymbols.NamedSymbols {
-			fileInfo.Imports = append(fileInfo.Imports, symbol.Name)
+			// this is pretty much wrong, more time needs to be spend on it.
+			if symbol.Index == elfparser.SHN_UNDEF {
+				fileInfo.Imports = append(fileInfo.Imports, symbol.Name)
+			} else {
+				fileInfo.Exports = append(fileInfo.Exports, symbol.Name)
+			}
 		}
+
+		// for _, export := range elf_parsed.
 
 		if capstone_arch == gapstone.CS_MODE_64 { // I don't like how the sections aren't an interface :(
 			for _, sec := range elf_parsed.Sections64 {
+				fileInfo.Sections = append(fileInfo.Sections, sec.SectionName)
 				if sec.ELF64SectionHeader.Size <= 0 || sec.Flags&0b100 != 0b100 /* progbits */ {
 					continue
 				}
@@ -285,6 +353,7 @@ func main() {
 			}
 		} else {
 			for _, sec := range elf_parsed.Sections32 {
+				fileInfo.Sections = append(fileInfo.Sections, sec.SectionName)
 				if sec.ELF32SectionHeader.Size <= 0 || sec.Flags&0b100 != 0b100 /* progbits */ {
 					continue
 				}
@@ -330,7 +399,15 @@ func main() {
 			}
 		}
 
+		for _, exp := range pe.Export.Functions {
+			if len(exp.Name) == 0 {
+				continue
+			}
+			fileInfo.Exports = append(fileInfo.Exports, exp.Name)
+		}
+
 		for _, sec := range pe.Sections {
+			fileInfo.Sections = append(fileInfo.Sections, sec.String())
 			if sec.Header.Characteristics&0x00000020 == 0x00000020 { // https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_section_header?source=recommendations
 				data := sec.Data(0, sec.Header.SizeOfRawData, pe)
 
