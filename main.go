@@ -58,8 +58,8 @@ func handleOs(os string, fileInfo FileInfo) bool {
 	return false
 }
 
-func handleOptional(fields interface{}, fileInfo FileInfo) bool {
-	return false
+func handleOptional(fields []interface{}, fileInfo FileInfo) bool {
+	return true
 }
 
 func handleAnd(fields []interface{}, fileInfo FileInfo) bool {
@@ -81,6 +81,9 @@ func handleAnd(fields []interface{}, fileInfo FileInfo) bool {
 			break
 		case "os":
 			bools = append(bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "optional":
+			bools = append(bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
 			break
 		default:
 			bools = append(bools, false)
@@ -119,6 +122,9 @@ func handleOr(fields []interface{}, fileInfo FileInfo) bool {
 			break
 		case "os":
 			bools = append(bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
+			break
+		case "optional":
+			bools = append(bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
 			break
 		default:
 			bools = append(bools, false)
@@ -368,7 +374,7 @@ func main() {
 			dur := time.Now().Sub(start)
 
 			if verbose || res {
-				logger.Printf("Rule %s: %s = %t (%dms)\n", rule.Rule.Meta.Name, rule.Rule.Meta.Mbc, res, dur.Milliseconds())
+				logger.Printf("Rule \"%s\": %t (%dms)\n\t%s\n\t%s\n", rule.Rule.Meta.Name, res, dur.Milliseconds(), rule.Rule.Meta.Mbc, rule.Rule.Meta.Namespace)
 			}
 		}(rule, fileInfo, *verbose)
 	}
