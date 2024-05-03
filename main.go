@@ -127,6 +127,9 @@ func handleOr(fields []interface{}, fileInfo FileInfo) bool {
 	}
 
 	// log.Printf("handleOr %#v\n", bools)
+	if len(bools) == 0 {
+		return false
+	}
 	for _, boolean := range bools {
 		if boolean == true {
 			return true
