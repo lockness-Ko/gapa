@@ -1,6 +1,6 @@
 # gapa
 
-A faster rewrite of [capa]() in golang.
+A faster rewrite of [capa](https://github.com/mandiant/capa/) in golang.
 
 - [x] Proof-of-concept (PoC)
   - [x] Blazingly fast
@@ -33,3 +33,4 @@ Capa is incredibly slow and it annoyed me. The goal of this project is to use th
 ## References
 
 [capa-rules format](https://github.com/mandiant/capa-rules/blob/master/doc/format.md#api)
+[gapstone](https://github.com/knightsc/gapstone)
