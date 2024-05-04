@@ -52,38 +52,30 @@ type Rule struct {
 }
 
 func handleExport(name string, fileInfo *FileInfo) bool {
-	fileInfo.Matches = append(fileInfo.Matches, "")
-	for _, exp := range fileInfo.Exports {
-		if name == exp {
-			return true
-		}
+	// fileInfo.Matches = append(fileInfo.Matches, "")
+	if slices.Contains(fileInfo.Exports, name) {
+		return true
 	}
 	return false
 }
 
 func handleSection(target_sec string, fileInfo *FileInfo) bool {
-	for _, sec := range fileInfo.Sections {
-		if target_sec == sec {
-			return true
-		}
+	if slices.Contains(fileInfo.Sections, target_sec) {
+		return true
 	}
 	return false
 }
 
 func handleImport(name string, fileInfo *FileInfo) bool {
-	for _, imp := range fileInfo.Imports {
-		if name == imp {
-			return true
-		}
+	if slices.Contains(fileInfo.Imports, name) {
+		return true
 	}
 	return false
 }
 
 func handleApi(name string, fileInfo *FileInfo) bool {
-	for _, imp := range fileInfo.Imports {
-		if name == imp {
-			return true
-		}
+	if slices.Contains(fileInfo.Imports, name) {
+		return true
 	}
 	return false
 }
@@ -113,54 +105,55 @@ func handleOptional(fields []interface{}, fileInfo *FileInfo) bool {
 	return true
 }
 
-func handleAnd(fields []interface{}, fileInfo *FileInfo) bool {
-	bools := []bool{}
-
+func handleFeature(bools *[]bool, fields []interface{}, fileInfo *FileInfo) {
 	for _, f := range fields {
 		k := utils.Keys(f.(map[string]interface{}))[0]
 		// log.Printf("handleAnd %s %s\n", k, f.(map[string]interface{}))
 
 		switch k {
 		case "and":
-			bools = append(bools, handleAnd(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			*bools = append(*bools, handleAnd(f.(map[string]interface{})[k].([]interface{}), fileInfo))
 			break
 		case "or":
-			bools = append(bools, handleOr(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			*bools = append(*bools, handleOr(f.(map[string]interface{})[k].([]interface{}), fileInfo))
 			break
 		case "api":
-			bools = append(bools, handleApi(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleApi(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "os":
-			bools = append(bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "arch":
-			bools = append(bools, handleArch(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleArch(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "mnemonic":
-			bools = append(bools, handleMnemonic(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleMnemonic(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "export":
-			bools = append(bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "import":
-			bools = append(bools, handleImport(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleImport(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "section":
-			bools = append(bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
 			break
 		case "optional":
-			bools = append(bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			*bools = append(*bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
 			break
 		default:
-			bools = append(bools, false)
+			*bools = append(*bools, false)
 			break
 		}
 	}
+}
+
+func handleAnd(fields []interface{}, fileInfo *FileInfo) bool {
+	bools := []bool{}
+
+	handleFeature(&bools, fields, fileInfo)
 
 	// log.Printf("handleAnd %#v\n", bools)
-	if len(bools) == 0 {
-		return false
-	}
 	for _, boolean := range bools {
 		if boolean == false {
 			return false
@@ -172,51 +165,9 @@ func handleAnd(fields []interface{}, fileInfo *FileInfo) bool {
 func handleOr(fields []interface{}, fileInfo *FileInfo) bool {
 	bools := []bool{}
 
-	for _, f := range fields {
-		k := utils.Keys(f.(map[string]interface{}))[0]
-		// log.Printf("handleOr %s %s\n", k, f.(map[string]interface{}))
-
-		switch k {
-		case "and":
-			bools = append(bools, handleAnd(f.(map[string]interface{})[k].([]interface{}), fileInfo))
-			break
-		case "or":
-			bools = append(bools, handleOr(f.(map[string]interface{})[k].([]interface{}), fileInfo))
-			break
-		case "api":
-			bools = append(bools, handleApi(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "os":
-			bools = append(bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "arch":
-			bools = append(bools, handleArch(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "mnemonic":
-			bools = append(bools, handleMnemonic(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "export":
-			bools = append(bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "import":
-			bools = append(bools, handleImport(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "section":
-			bools = append(bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "optional":
-			bools = append(bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
-			break
-		default:
-			bools = append(bools, false)
-			break
-		}
-	}
+	handleFeature(&bools, fields, fileInfo)
 
 	// log.Printf("handleOr %#v\n", bools)
-	if len(bools) == 0 {
-		return false
-	}
 	for _, boolean := range bools {
 		if boolean == true {
 			return true
@@ -349,6 +300,7 @@ func main() {
 	fileInfo.Instructions.Initialise()
 	logger.Println("Initialised indexes")
 
+	start = time.Now()
 	magic := dat[0:4]
 	if bytes.Equal(magic, []byte{0x7f, 'E', 'L', 'F'}) {
 		log.Println("File type: ELF")
@@ -481,7 +433,8 @@ func main() {
 		logger.Fatalln("Unrecognised file format.")
 	}
 
-	logger.Printf("Disassembled %d instructions\n", fileInfo.Instructions.MnemonicSize)
+	dur = time.Now().Sub(start)
+	logger.Printf("Disassembled %d instructions (%dms)\n", fileInfo.Instructions.MnemonicSize, dur.Milliseconds())
 
 	// for _, mne := range instructions.MnemonicKeys {
 	// 	for _, inst := range instructions.Get(mne) {
@@ -496,6 +449,7 @@ func main() {
 	// 	logger.Printf("Rule \"%s\" = %t (%dms)\n", rule.Rule.Meta.Name, res, dur.Milliseconds())
 	// }
 
+	start_t := time.Now()
 	var wg sync.WaitGroup
 	for _, rule := range rules {
 		wg.Add(1)
@@ -511,4 +465,6 @@ func main() {
 		}(rule, fileInfo, *verbose)
 	}
 	wg.Wait()
+	dur_t := time.Now().Sub(start_t)
+	logger.Printf("All rules took %dms\n", dur_t.Milliseconds())
 }
