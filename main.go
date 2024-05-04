@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"flag"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,6 +20,9 @@ import (
 	peparser "github.com/saferwall/pe"
 	"gopkg.in/yaml.v3"
 )
+
+//go:embed rules/*.yml
+var rules_fs embed.FS
 
 type MetaField struct {
 	Name      string
@@ -35,6 +40,8 @@ type FileInfo struct {
 	Sections     []string
 	Arch         string
 	Instructions index.InstructionIndex
+
+	Matches []string
 }
 
 type Rule struct {
@@ -44,7 +51,8 @@ type Rule struct {
 	}
 }
 
-func handleExport(name string, fileInfo FileInfo) bool {
+func handleExport(name string, fileInfo *FileInfo) bool {
+	fileInfo.Matches = append(fileInfo.Matches, "")
 	for _, exp := range fileInfo.Exports {
 		if name == exp {
 			return true
@@ -53,7 +61,7 @@ func handleExport(name string, fileInfo FileInfo) bool {
 	return false
 }
 
-func handleSection(target_sec string, fileInfo FileInfo) bool {
+func handleSection(target_sec string, fileInfo *FileInfo) bool {
 	for _, sec := range fileInfo.Sections {
 		if target_sec == sec {
 			return true
@@ -62,7 +70,7 @@ func handleSection(target_sec string, fileInfo FileInfo) bool {
 	return false
 }
 
-func handleApi(name string, fileInfo FileInfo) bool {
+func handleImport(name string, fileInfo *FileInfo) bool {
 	for _, imp := range fileInfo.Imports {
 		if name == imp {
 			return true
@@ -71,32 +79,41 @@ func handleApi(name string, fileInfo FileInfo) bool {
 	return false
 }
 
-func handleOs(os string, fileInfo FileInfo) bool {
+func handleApi(name string, fileInfo *FileInfo) bool {
+	for _, imp := range fileInfo.Imports {
+		if name == imp {
+			return true
+		}
+	}
+	return false
+}
+
+func handleOs(os string, fileInfo *FileInfo) bool {
 	if os == fileInfo.Os {
 		return true
 	}
 	return false
 }
 
-func handleArch(arch string, fileInfo FileInfo) bool {
+func handleArch(arch string, fileInfo *FileInfo) bool {
 	if arch == fileInfo.Arch {
 		return true
 	}
 	return false
 }
 
-func handleMnemonic(mne string, fileInfo FileInfo) bool {
+func handleMnemonic(mne string, fileInfo *FileInfo) bool {
 	if slices.Contains(fileInfo.Instructions.MnemonicKeys, mne) {
 		return true
 	}
 	return false
 }
 
-func handleOptional(fields []interface{}, fileInfo FileInfo) bool {
+func handleOptional(fields []interface{}, fileInfo *FileInfo) bool {
 	return true
 }
 
-func handleAnd(fields []interface{}, fileInfo FileInfo) bool {
+func handleAnd(fields []interface{}, fileInfo *FileInfo) bool {
 	bools := []bool{}
 
 	for _, f := range fields {
@@ -125,6 +142,9 @@ func handleAnd(fields []interface{}, fileInfo FileInfo) bool {
 		case "export":
 			bools = append(bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
 			break
+		case "import":
+			bools = append(bools, handleImport(f.(map[string]interface{})[k].(string), fileInfo))
+			break
 		case "section":
 			bools = append(bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
 			break
@@ -149,7 +169,7 @@ func handleAnd(fields []interface{}, fileInfo FileInfo) bool {
 	return true
 }
 
-func handleOr(fields []interface{}, fileInfo FileInfo) bool {
+func handleOr(fields []interface{}, fileInfo *FileInfo) bool {
 	bools := []bool{}
 
 	for _, f := range fields {
@@ -178,6 +198,9 @@ func handleOr(fields []interface{}, fileInfo FileInfo) bool {
 		case "export":
 			bools = append(bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
 			break
+		case "import":
+			bools = append(bools, handleImport(f.(map[string]interface{})[k].(string), fileInfo))
+			break
 		case "section":
 			bools = append(bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
 			break
@@ -202,7 +225,7 @@ func handleOr(fields []interface{}, fileInfo FileInfo) bool {
 	return false
 }
 
-func processCond(ops []map[string]interface{}, fileInfo FileInfo) bool {
+func processCond(ops []map[string]interface{}, fileInfo *FileInfo) bool {
 	for _, op := range ops {
 		for _, f := range utils.Keys(op) {
 			// log.Printf("%s\n", f)
@@ -220,10 +243,16 @@ func processCond(ops []map[string]interface{}, fileInfo FileInfo) bool {
 	return false
 }
 
-func processRule(filePath string) Rule {
-	yfile, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatal(err)
+func processRule(filePath string, builtinRules bool) *Rule {
+	var yfile []byte
+	var err error
+	if builtinRules {
+		yfile, err = rules_fs.ReadFile("rules/" + filePath)
+	} else {
+		yfile, err = os.ReadFile(filePath)
+		if err != nil {
+			log.Fatalf("processRule %s\n", err)
+		}
 	}
 
 	r := Rule{}
@@ -232,7 +261,7 @@ func processRule(filePath string) Rule {
 		log.Fatal(err)
 	}
 
-	return r
+	return &r
 }
 
 func disasm(data []byte, arch int) ([]gapstone.Instruction, error) {
@@ -253,6 +282,16 @@ func disasm(data []byte, arch int) ([]gapstone.Instruction, error) {
 	return insns, nil
 }
 
+func walkDir(dir []fs.DirEntry) []string {
+	out := []string{}
+
+	for _, obj := range dir {
+		out = append(out, obj.Name())
+	}
+
+	return out
+}
+
 func main() {
 	folderpath := flag.String("rule-folder", ".", "Path to rule folder")
 	file := flag.String("file", ", please specify a file", "Path to file to analyse")
@@ -265,26 +304,42 @@ func main() {
 	logger := log.Default()
 	logger.SetFlags(log.Lmicroseconds)
 
+	ymlExt := ".yml"
+	start := time.Now()
 	logger.Println("Loading rules...")
-	err := filepath.Walk(*folderpath,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
 
-			if len(path) < 4 {
+	if *folderpath == "." {
+		rules_dir, err := rules_fs.ReadDir("rules")
+		if err != nil {
+			log.Fatalf("rules_dir %s\n", err)
+		}
+		rule_paths := walkDir(rules_dir)
+
+		for _, rule_path := range rule_paths {
+			rules = append(rules, *processRule(rule_path, true))
+		}
+	} else {
+		err := filepath.Walk(*folderpath,
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if len(path) < 4 {
+					return nil
+				}
+				if path[len(path)-4:] == ymlExt {
+					rules = append(rules, *processRule(path, false))
+				}
 				return nil
-			}
-			if path[len(path)-4:] == ".yml" {
-				rules = append(rules, processRule(path))
-			}
-			return nil
-		})
-	logger.Printf("Loaded %d rules\n", len(rules))
+			})
 
-	if err != nil {
-		log.Println(err)
+		if err != nil {
+			log.Println(err)
+		}
 	}
+	dur := time.Now().Sub(start)
+	logger.Printf("Loaded %d rules (%dms)\n", len(rules), dur.Milliseconds())
 
 	dat, err := os.ReadFile(*file)
 	if err != nil {
@@ -447,7 +502,7 @@ func main() {
 		go func(rule Rule, fileInfo FileInfo, verbose bool) {
 			defer wg.Done()
 			start := time.Now()
-			res := processCond(rule.Rule.Features, fileInfo)
+			res := processCond(rule.Rule.Features, &fileInfo)
 			dur := time.Now().Sub(start)
 
 			if verbose || res {

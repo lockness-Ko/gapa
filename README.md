@@ -7,7 +7,7 @@ A faster rewrite of [capa](https://github.com/mandiant/capa/) in golang.
 - [x] x86/x86-64 support
 - [x] PE support
 - [x] ELF support
-- [ ] Compiled in rules
+- [x] Compiled in rules
 - [ ] A bunch of the standard rule features in capa (namespace, class, characteristic, etc.)
   - [ ] characteristic
   - [ ] namespace
