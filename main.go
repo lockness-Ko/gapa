@@ -47,7 +47,7 @@ type FileInfo struct {
 type Rule struct {
 	Rule struct {
 		Meta     MetaField
-		Features []map[string]interface{}
+		Features []interface{}
 	}
 }
 
@@ -117,6 +117,9 @@ func handleFeature(bools *[]bool, fields []interface{}, fileInfo *FileInfo) {
 		case "or":
 			*bools = append(*bools, handleOr(f.(map[string]interface{})[k].([]interface{}), fileInfo))
 			break
+		case "not":
+			*bools = append(*bools, handleNot(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			break
 		case "api":
 			*bools = append(*bools, handleApi(f.(map[string]interface{})[k].(string), fileInfo))
 			break
@@ -176,22 +179,31 @@ func handleOr(fields []interface{}, fileInfo *FileInfo) bool {
 	return false
 }
 
-func processCond(ops []map[string]interface{}, fileInfo *FileInfo) bool {
-	for _, op := range ops {
-		for _, f := range utils.Keys(op) {
-			// log.Printf("%s\n", f)
+func handleNot(fields []interface{}, fileInfo *FileInfo) bool {
+	bools := []bool{}
 
-			switch f {
-			case "and":
-				return handleAnd(op[f].([]interface{}), fileInfo)
-			case "or":
-				return handleOr(op[f].([]interface{}), fileInfo)
-			default:
-				return false
-			}
+	handleFeature(&bools, fields, fileInfo)
+
+	// log.Printf("handleOr %#v\n", bools)
+	for _, boolean := range bools {
+		if boolean == true {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+func processCond(ops []interface{}, fileInfo *FileInfo) bool {
+	bools := []bool{}
+
+	handleFeature(&bools, ops, fileInfo)
+
+	for _, boolean := range bools {
+		if boolean == false {
+			return false
+		}
+	}
+	return true
 }
 
 func processRule(filePath string, builtinRules bool) *Rule {
