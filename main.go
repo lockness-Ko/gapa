@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 
 	"time"
@@ -49,6 +51,12 @@ type Rule struct {
 		Meta     MetaField
 		Features []interface{}
 	}
+}
+
+func removeDescription(name string) string {
+	split := strings.Split(name, " =")
+
+	return strings.TrimSpace(split[0])
 }
 
 func handleExport(name string, fileInfo *FileInfo) bool {
@@ -94,6 +102,35 @@ func handleArch(arch string, fileInfo *FileInfo) bool {
 	return false
 }
 
+func handleNumber(n interface{}, fileInfo *FileInfo) bool {
+	var num uint64
+	var err error
+	switch n.(type) {
+	case int:
+		num = uint64(n.(int))
+	case string:
+		if len(n.(string)) > 2 {
+			if n.(string)[0:2] == "0x" {
+				num, err = strconv.ParseUint(n.(string)[2:], 16, 0)
+			} else {
+				num, err = strconv.ParseUint(n.(string), 10, 0)
+			}
+		} else {
+			num, err = strconv.ParseUint(n.(string), 10, 0)
+		}
+
+		if err != nil {
+			log.Fatalf("handleNumber %s", err)
+		}
+	}
+
+	if slices.Contains(fileInfo.Instructions.NumberKeys, num) {
+		return true
+	}
+
+	return false
+}
+
 func handleMnemonic(mne string, fileInfo *FileInfo) bool {
 	if slices.Contains(fileInfo.Instructions.MnemonicKeys, mne) {
 		return true
@@ -109,41 +146,50 @@ func handleFeature(bools *[]bool, fields []interface{}, fileInfo *FileInfo) {
 	for _, f := range fields {
 		k := utils.Keys(f.(map[string]interface{}))[0]
 		// log.Printf("handleAnd %s %s\n", k, f.(map[string]interface{}))
+		nextSegment := f.(map[string]interface{})[k]
 
 		switch k {
 		case "and":
-			*bools = append(*bools, handleAnd(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			*bools = append(*bools, handleAnd(nextSegment.([]interface{}), fileInfo))
 			break
 		case "or":
-			*bools = append(*bools, handleOr(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			*bools = append(*bools, handleOr(nextSegment.([]interface{}), fileInfo))
 			break
 		case "not":
-			*bools = append(*bools, handleNot(f.(map[string]interface{})[k].([]interface{}), fileInfo))
-			break
-		case "api":
-			*bools = append(*bools, handleApi(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "os":
-			*bools = append(*bools, handleOs(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "arch":
-			*bools = append(*bools, handleArch(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "mnemonic":
-			*bools = append(*bools, handleMnemonic(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "export":
-			*bools = append(*bools, handleExport(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "import":
-			*bools = append(*bools, handleImport(f.(map[string]interface{})[k].(string), fileInfo))
-			break
-		case "section":
-			*bools = append(*bools, handleSection(f.(map[string]interface{})[k].(string), fileInfo))
+			*bools = append(*bools, handleNot(nextSegment.([]interface{}), fileInfo))
 			break
 		case "optional":
-			*bools = append(*bools, handleOptional(f.(map[string]interface{})[k].([]interface{}), fileInfo))
+			*bools = append(*bools, handleOptional(nextSegment.([]interface{}), fileInfo))
 			break
+		case "api":
+			*bools = append(*bools, handleApi(nextSegment.(string), fileInfo))
+			break
+		case "os":
+			*bools = append(*bools, handleOs(nextSegment.(string), fileInfo))
+			break
+		case "arch":
+			*bools = append(*bools, handleArch(nextSegment.(string), fileInfo))
+			break
+		case "mnemonic":
+			*bools = append(*bools, handleMnemonic(nextSegment.(string), fileInfo))
+			break
+		case "export":
+			*bools = append(*bools, handleExport(nextSegment.(string), fileInfo))
+			break
+		case "import":
+			*bools = append(*bools, handleImport(nextSegment.(string), fileInfo))
+			break
+		case "section":
+			*bools = append(*bools, handleSection(nextSegment.(string), fileInfo))
+			break
+		// case "number":
+		// 	switch nextSegment.(type) {
+		// 	case int:
+		// 		*bools = append(*bools, handleNumber(nextSegment.(int), fileInfo))
+		// 	case string:
+		// 		*bools = append(*bools, handleNumber(removeDescription(nextSegment.(string)), fileInfo))
+		// 	}
+		// 	break
 		default:
 			*bools = append(*bools, false)
 			break
@@ -446,10 +492,10 @@ func main() {
 	}
 
 	dur = time.Now().Sub(start)
-	logger.Printf("Disassembled %d instructions (%dms)\n", fileInfo.Instructions.MnemonicSize, dur.Milliseconds())
+	logger.Printf("Disassembled %d instructions (%dms)\n", fileInfo.Instructions.Size, dur.Milliseconds())
 
-	// for _, mne := range instructions.MnemonicKeys {
-	// 	for _, inst := range instructions.Get(mne) {
+	// for _, mne := range fileInfo.Instructions.MnemonicKeys {
+	// 	for _, inst := range fileInfo.Instructions.Get(mne) {
 	// 		logger.Printf("%s %s %#v\n", inst.Mnemonic, inst.OpStr, inst.X86.Operands)
 	// 	}
 	// }
