@@ -131,6 +131,13 @@ func handleNumber(n interface{}, fileInfo *FileInfo) bool {
 	return false
 }
 
+func handleString(mne string, fileInfo *FileInfo) bool {
+	if slices.Contains(fileInfo.Instructions.StringKeys, mne) {
+		return true
+	}
+	return false
+}
+
 func handleMnemonic(mne string, fileInfo *FileInfo) bool {
 	if slices.Contains(fileInfo.Instructions.MnemonicKeys, mne) {
 		return true
@@ -181,6 +188,9 @@ func handleFeature(bools *[]bool, fields []interface{}, fileInfo *FileInfo) {
 			break
 		case "section":
 			*bools = append(*bools, handleSection(nextSegment.(string), fileInfo))
+			break
+		case "string":
+			*bools = append(*bools, handleString(nextSegment.(string), fileInfo))
 			break
 		// case "number":
 		// 	switch nextSegment.(type) {
