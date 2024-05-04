@@ -34,6 +34,12 @@ A faster rewrite of [capa](https://github.com/mandiant/capa/) in golang.
 
 ## Running
 
+For builtin rules
+```bash
+./gapa -file ./file.ext
+```
+
+or, for custom rules
 ```bash
 ./gapa -file ./file.ext -rule-folder /path/to/rules
 ```
